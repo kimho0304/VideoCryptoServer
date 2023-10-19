@@ -96,166 +96,12 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private class ServerTask extends AsyncTask<Void, Void, Void> {
-        @Override
-        protected Void doInBackground(Void... voids) {
-            try {
-                serverSocket = new ServerSocket(port);
-
-                // printLog("Server is on progress: " + serverSocket.getInetAddress()+":"+serverSocket.getLocalPort());
-                Log.i(TAG, "Server is on progress.");
-
-                while (true) {
-                    Log.i(TAG, String.valueOf((Boolean) (clientSocket == null)));
-                    clientSocket = serverSocket.accept();
-                    InetAddress clientHost = clientSocket.getLocalAddress();
-                    int clientPort = clientSocket.getPort();
-
-                    if (clientSocket != null) {
-                        // printLog("Connection Success.");
-                        // printLog("The Client is connected: " + clientHost + ":" + clientPort + ", host: " + clientHost.getHostName());
-
-                        Log.i(TAG, "The client is connected: " + clientHost + ":" + clientPort + ", host: " + clientHost.getHostName());
-
-                        Boolean flag = false;
-                        DataInputStream dIs;
-                        while (flag == false) {
-                            Log.i(TAG, "FLAG ON: " + flag);
-                            try {
-                                dIs = new DataInputStream(clientSocket.getInputStream());
-                                flag = dIs.readBoolean();
-                                dIs.close();
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                                throw new RuntimeException(e);
-                            } finally {
-                                Log.i(TAG, "FLAG ON: " + flag);
-                            }
-                        }
-
-                        // 출력물 파일을 담을 File 형 변수 resultFile 생성.
-                        resultFile = null;
-                        try {
-                            resultFile = File.createTempFile("tmp", "mp4");
-                        } catch (IOException e) {
-                            // printLog("Failed to create new tmp file: " + e);
-                            Log.e(TAG, "Failed to create new tmp file: " + e);
-                            e.printStackTrace();
-                        }
-
-                        BufferedOutputStream bufferOS = null;
-                        try {
-                            bufferOS = new BufferedOutputStream(new FileOutputStream(resultFile));
-                            Log.i(TAG, "bufferOS Info: " + bufferOS);
-                            // printLog("OutputStream Info: " + bufferOS);
-                        } catch (FileNotFoundException e) {
-                            // printLog("FileNotFoundException: " + e);
-                            Log.e(TAG, "FileNotFoundException: " + e);
-                            e.printStackTrace();
-                        }
-
-                        DataInputStream iS = null;
-                        Log.i(TAG, "fuck");
-
-                        DataOutputStream dOs = null;
-                        try {
-                            dOs = new DataOutputStream(clientSocket.getOutputStream());
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                        Log.i(TAG, String.valueOf((Boolean) (dOs == null)));
-                        DataOutputStream finalDOs = dOs;
-                        new Thread(() -> {
-                            Log.i(TAG, "writeBoolean allocation");
-                            try {
-                                finalDOs.writeBoolean(true);
-                                Log.i(TAG, "writeBoolean write");
-                                finalDOs.flush();
-                                Log.i(TAG, "writeBoolean flush");
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                                throw new RuntimeException(e);
-                            }
-                        }).start();
-
-                        /*try {
-                            iS = new DataInputStream(clientSocket.getInputStream());
-                            // printLog("clientSocket.getInputStream() Info: " + clientSocket.getInputStream().toString());
-                            Log.i(TAG, "clientSocket.getInputStream() Info: " + clientSocket.getInputStream().toString());
-                            // printLog("InputStream Info: " + iS);
-                            Log.i(TAG, "InputStream Info: " + iS);
-                        } catch (IOException e) {
-                            // printLog("Failed to allocate the InputStream: " + e);
-                            Log.e(TAG, "Failed to allocate the InputStream: " + e);
-                            e.printStackTrace();
-                        }*/
-
-                        try {
-                            // byte[] buffer = new byte[16384]; // == 2^14
-                            byte[] buffer = new byte[8192]; // == 2^13
-                            int numRead;
-                            long totalRead = 0;
-                            // printLog("Starting to get receipts");
-                            Log.i(TAG, "Starting to get receipts");
-                            try {
-                                numRead = iS.read(buffer);
-                                Log.i(TAG, "Starting to get receipts: " + numRead);
-                            } catch (Exception e) {
-                                Log.i(TAG, "Starting to get receipts failed: " + e);
-                                e.printStackTrace();
-                            }
-                            while ((numRead = iS.read(buffer)) != -1) {
-                                bufferOS.write(buffer, 0, numRead);
-                                totalRead += numRead;
-                                bufferOS.flush();
-                                // printLog("Bytes received: " + numRead + ", Total bytes: " + totalRead);
-                                Log.i(TAG, "Bytes received: " + numRead + ", Total bytes: " + totalRead);
-                                //mainHandler.post(() -> {
-                                // printLog("Current Received Bytes Length: " + numRead + "\n\n");
-                                //});
-                            }
-                            // printLog("End of the receipts");
-                            Log.i(TAG, "End of the receipts");
-                        } catch (Exception e) {
-                            // printLog("Connection failed: " + e);
-                            Log.e(TAG, "Connection failed: " + e);
-                            e.printStackTrace();
-                        }/*finally {
-                            try {
-                                iS.close();
-                                bufferOS.close();
-                                Log.i(TAG, "Closed streams successfully");
-                            } catch (IOException e) {
-                                // printLog("Failed to close streams: " + e);
-                                Log.e(TAG, "Failed to close streams: " + e);
-                            }
-                        }*/
-
-                        clientSocket.close();
-                        mainHandler.post(() -> playBtn.setEnabled((canPlayVideo = true)));
-                    }
-                }
-            } catch (Exception e) {
-                // printLog("Connection failed: " + e);
-                Log.e(TAG, "Connection failed: " + e);
-                e.printStackTrace();
-            }
-            return null;
-        }
-    }
-
-    private Thread receiveFileAsBytes() throws IOException {
-        return new Thread(() -> {
-
-        });
-    }
-
     private Thread startServer() {
         return new Thread(() -> {
             try {
                 serverSocket = new ServerSocket(port);
 
-                // printLog("Server is on progress: " + serverSocket.getInetAddress()+":"+serverSocket.getLocalPort());
+                printLog("Server is on progress: " + serverSocket.getInetAddress()+":"+serverSocket.getLocalPort());
                 Log.i(TAG, "Server is on progress.");
 
                 while (true) {
@@ -265,8 +111,8 @@ public class MainActivity extends AppCompatActivity {
                     int clientPort = clientSocket.getPort();
 
                     if (clientSocket != null) {
-                        // printLog("Connection Success.");
-                        // printLog("The Client is connected: " + clientHost + ":" + clientPort + ", host: " + clientHost.getHostName());
+                        printLog("Connection Success.");
+                        printLog("The Client is connected: " + clientHost + ":" + clientPort + ", host: " + clientHost.getHostName());
 
                         Log.i(TAG, "The client is connected: " + clientHost + ":" + clientPort + ", host: " + clientHost.getHostName());
 
@@ -283,34 +129,15 @@ public class MainActivity extends AppCompatActivity {
                                 Log.i(TAG, "FLAG ON: " + flag);
                             }
                         }
-                        // dIs.close();
 
                         Log.i(TAG, "Skip writeBoolean allocation");
-                        /*DataOutputStream dOs = new DataOutputStream(clientSocket.getOutputStream());
-
-                        try {
-                            Log.i(TAG, String.valueOf((Boolean) (dOs == null)));
-                            try {
-                                dOs.writeBoolean(true);
-                                Log.i(TAG, "writeBoolean write");
-                                dOs.flush();
-                                Log.i(TAG, "writeBoolean flush");
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                                throw new RuntimeException(e);
-                            }
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }finally {
-                            dOs.close();
-                        }*/
 
                         // 출력물 파일을 담을 File 형 변수 resultFile 생성.
                         resultFile = null;
                         try {
                             resultFile = File.createTempFile("tmp", "mp4");
                         } catch (IOException e) {
-                            // printLog("Failed to create new tmp file: " + e);
+                            printLog("Failed to create new tmp file: " + e);
                             Log.e(TAG, "Failed to create new tmp file: " + e);
                             e.printStackTrace();
                         }
@@ -319,34 +146,19 @@ public class MainActivity extends AppCompatActivity {
                         try {
                             bufferOS = new BufferedOutputStream(new FileOutputStream(resultFile));
                             Log.i(TAG, "bufferOS Info: " + bufferOS);
-                            // printLog("OutputStream Info: " + bufferOS);
+                            printLog("OutputStream Info: " + bufferOS);
                         } catch (FileNotFoundException e) {
-                            // printLog("FileNotFoundException: " + e);
+                            printLog("FileNotFoundException: " + e);
                             Log.e(TAG, "FileNotFoundException: " + e);
                             e.printStackTrace();
                         }
-
-                        // BufferedInputStream bIs = null;
-                        /*DataInputStream iS = null;
-                        try {
-                            // bIs = new BufferedInputStream(clientSocket.getInputStream());
-                            // iS = new DataInputStream(bIs);
-                            iS = new DataInputStream(clientSocket.getInputStream());
-                            Log.i(TAG, "Set iS");
-                        } catch (SocketException e) {
-                            Log.e(TAG, String.valueOf(e));
-                            e.printStackTrace();
-                        } catch (Exception e) {
-                            Log.e(TAG, String.valueOf(e));
-                            e.printStackTrace();
-                        }*/
 
                         try {
                             // byte[] buffer = new byte[16384]; // == 2^14
                             byte[] buffer = new byte[8192]; // == 2^13
                             int numRead;
                             long totalRead = 0;
-                            // printLog("Starting to get receipts");
+                            printLog("Starting to get receipts");
                             Log.i(TAG, "Starting to get receipts");
 
                             /*try {
@@ -361,16 +173,16 @@ public class MainActivity extends AppCompatActivity {
                                 bufferOS.write(buffer, 0, numRead);
                                 totalRead += numRead;
                                 bufferOS.flush();
-                                // printLog("Bytes received: " + numRead + ", Total bytes: " + totalRead);
+                                printLog("Bytes received: " + numRead + ", Total bytes: " + totalRead);
                                 Log.i(TAG, "Bytes received: " + numRead + ", Total bytes: " + totalRead);
                                 //mainHandler.post(() -> {
-                                // printLog("Current Received Bytes Length: " + numRead + "\n\n");
+                                printLog("Current Received Bytes Length: " + numRead + "\n");
                                 //});
                             }
-                            // printLog("End of the receipts");
+                            printLog("End of the receipts");
                             Log.i(TAG, "End of the receipts");
                         } catch (Exception e) {
-                            // printLog("Connection failed: " + e);
+                            printLog("Connection failed: " + e);
                             Log.e(TAG, "Connection failed: " + e);
                             e.printStackTrace();
                         } finally {
@@ -381,7 +193,7 @@ public class MainActivity extends AppCompatActivity {
                             } catch (IOException e) {
                                 dIs.close();
                                 bufferOS.close();
-                                // printLog("Failed to close streams: " + e);
+                                printLog("Failed to close streams: " + e);
                                 Log.e(TAG, "Failed to close streams: " + e);
                             }
                         }
@@ -391,7 +203,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             } catch (Exception e) {
-                // printLog("Connection failed: " + e);
+                printLog("Connection failed: " + e);
                 Log.e(TAG, "Connection failed: " + e);
                 e.printStackTrace();
             }
