@@ -20,10 +20,10 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <VideoView
+        <SurfaceView
             android:id="@+id/videoView"
-            android:layout_width="match_parent"
-            android:layout_height="256dp" />
+            android:layout_width="672px"
+            android:layout_height="1074px" />
 
         <Button
             android:id="@+id/playBtn"
