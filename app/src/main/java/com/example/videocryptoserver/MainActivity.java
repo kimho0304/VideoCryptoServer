@@ -7,7 +7,6 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.media.MediaPlayer;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
@@ -19,32 +18,25 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import android.widget.Toast;
-import android.widget.VideoView;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
+import java.io.Serializable;
+import java.io.StreamCorruptedException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketException;
 import java.util.ArrayList;
-import java.util.Arrays;
 
 public class MainActivity extends AppCompatActivity implements SurfaceHolder.Callback {
     private static final String TAG = "MainActivity_Debug";
     private static final int FRAME_DELAY = 0;
     int port = 9090;
-    int i;
+    int i = 0;
     private Button server_btn, receive_btn, playBtn;
     private SurfaceView videoView;
     private SurfaceHolder surfaceHolder;
@@ -53,14 +45,13 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
     //private ArrayList<Bitmap> frames = new ArrayList<>(); // Array of bitmaps for animation frames
     private final Bitmap[] frames = new Bitmap[8000];
     private boolean canPlayVideo = false;
-    private DataInputStream dIs = null;
+    private InputStream iS;
+    private ObjectInputStream dIs = null;
     private DataInputStream dIsFlag = null;
     private Handler handler;
     private int currentFrameIndex = 0;
     private ServerSocket serverSocket;
     private Socket clientSocket = null;
-    private DataInputStream dataInputStream;
-    private FileOutputStream fileOutputStream;
     private File resultFile;
 
     private void printLog(String s) {
@@ -108,43 +99,65 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
 
         receive_btn = findViewById(R.id.receiveBtn);
         receive_btn.setOnClickListener(view -> {
-            new Thread(() -> {
-                while (clientSocket.isConnected() == true) {
-                    byte[] buffer = new byte[8192];
-                    ByteArrayOutputStream bufferOS = new ByteArrayOutputStream();
-                    int numRead;
-                    long totalRead = 0;
-                    boolean flag = false;
-                    try {
-                        while ((numRead = dIs.read()) != -1) {
-                            bufferOS.write(buffer, 0, numRead);
-                            totalRead += numRead;
-                            bufferOS.flush();
-                            //printLog("Bytes received: " + numRead + ", Total bytes: " + totalRead);
-                            Log.i(TAG, "Bytes received: " + numRead + ", Total bytes: " + totalRead);
-                            //handler.post(() -> {
-                            //printLog("Current Received Bytes Length: " + numRead + "\n");
-                            //});
+            receiveData task = new receiveData();
+            task.execute();
+        });
+    }
 
-                            flag = dIsFlag.readBoolean();
-                            if(flag) {
-                                byte[] resultArray = bufferOS.toByteArray();
-                                Bitmap resultBitmp = BitmapFactory.decodeByteArray(resultArray, 0, resultArray.length);
-                                //Log.i(TAG, "resultBitmap info: " + resultBitmp.getByteCount());
-                                frames[currentFrameIndex++] = (resultBitmp);
-                                Log.i(TAG, "currentFrameIndex info: " + currentFrameIndex);
-                                drawFrame();
-                                flag = false;
-                            }
-                        }
+    private class receiveData extends AsyncTask<Void, Void, Void> {
+        @Override
+        protected Void doInBackground(Void... voids) {
+            while (clientSocket.isConnected() == true) {
+                try {
+                    //  java.io.StreamCorruptedException: invalid type code: AC --> 스트림을 새로 생성하여 해결
+                    //BitmapDataObject bitmapObject = new BitmapDataObject(null);
+                    byte[] result = (byte[]) dIs.readObject();
+                    //int resultLength = (int) dIs.readInt();
+                    //byte[] buffer = new byte[resultLength];
+                    //for(int pos = 0; pos != -1; pos = dIs.read(buffer));
 
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
+                    Bitmap resultBitmap = BitmapFactory.decodeByteArray(result, 0, result.length);
+                    //printLog("resultBitmap is null?: " + (Boolean)(resultBitmap == null));
+
+                    frames[i] = resultBitmap;
+                    currentFrameIndex++;
+                    //if(frames[i] != null)
+                        //printLog("frames[i]: info" + frames[i].getByteCount() + ", cnt: " + i);
+                    Log.i(TAG, "getBitmap: " + i);
+                    publishProgress();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
-        }).start();
-    });
-}
+
+            return null;
+        }
+
+        @Override
+        protected void onProgressUpdate(java.lang.Void... values) {
+            super.onProgressUpdate(values);
+            drawFrame();
+        }
+    }
+
+    // https://github.com/rantibi/MyFirstApp/blob/master/src/com/sharedpaint/serializables/SerializableBitmap.java
+    public class BitmapDataObject implements Serializable {
+
+        private Bitmap currentImage;
+
+        public BitmapDataObject(Bitmap bitmap) {
+            currentImage = bitmap;
+        }
+
+        private byte[] compressBitmap() throws IOException {
+            ByteArrayOutputStream stream = new ByteArrayOutputStream();
+            currentImage.compress(Bitmap.CompressFormat.PNG, 100, stream);
+            byte[] byteArray = stream.toByteArray();
+            return byteArray;
+        }
+    }
 
     private Thread startServer() {
         return new Thread(() -> {
@@ -153,6 +166,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
 
                 //printLog("Server is on progress: " + serverSocket.getInetAddress() + ":" + serverSocket.getLocalPort());
                 Log.i(TAG, "Server is on progress.");
+                printLog("Server is on progress.");
 
                 while (true) {
                     if (clientSocket != null)
@@ -163,116 +177,11 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
 
                 InetAddress clientHost = clientSocket.getLocalAddress();
                 int clientPort = clientSocket.getPort();
-                dIs = new DataInputStream(clientSocket.getInputStream());
-                dIsFlag = new DataInputStream(clientSocket.getInputStream());
+                printLog("The client is connected: " + clientHost + ":" + clientPort);
 
-                if (clientSocket != null) {
-                    //printLog("Connection Success.");
-                    //printLog("The Client is connected: " + clientHost + ":" + clientPort + ", host: " + clientHost.getHostName());
-
-                    Log.i(TAG, "The client is connected: " + clientHost + ":" + clientPort + ", host: " + clientHost.getHostName());
-
-                    //Boolean flag = false;
-                    //DataInputStream dIs = new DataInputStream(clientSocket.getInputStream());
-//                        while (flag == false) {
-//                            Log.i(TAG, "FLAG ON: " + flag);
-//                            try {
-//                                flag = dIs.readBoolean();
-//                            } catch (IOException e) {
-//                                e.printStackTrace();
-//                                throw new RuntimeException(e);
-//                            } finally {
-//                                Log.i(TAG, "FLAG ON: " + flag);
-//                            }
-//                        }
-
-                    Log.i(TAG, "Skip writeBoolean allocation");
-
-                    // 출력물 파일을 담을 File 형 변수 resultFile 생성.
-                    resultFile = null;
-                        /*try {
-                            resultFile = File.createTempFile("tmp", "mp4");
-                        } catch (IOException e) {
-                            //printLog("Failed to create new tmp file: " + e);
-                            Log.e(TAG, "Failed to create new tmp file: " + e);
-                            e.printStackTrace();
-                        }*/
-
-                        /*BufferedOutputStream bufferOS = null;
-                        try {
-                            bufferOS = new BufferedOutputStream(new FileOutputStream(resultFile));
-                            Log.i(TAG, "bufferOS Info: " + bufferOS);
-                            //printLog("OutputStream Info: " + bufferOS);
-                        } catch (FileNotFoundException e) {
-                            //printLog("FileNotFoundException: " + e);
-                            Log.e(TAG, "FileNotFoundException: " + e);
-                            e.printStackTrace();
-                        }*/
-
-                    ByteArrayOutputStream bufferOS = new ByteArrayOutputStream();
-                    Boolean flag = false;
-
-
-                    /*while (true) {
-                        try {
-                            //flag = dIs.readBoolean();
-                            // byte[] buffer = new byte[16384]; // == 2^14
-                            byte[] buffer = new byte[8192]; // == 2^13
-                            int numRead;
-                            long totalRead = 0;
-                            //printLog("Starting to get receipts");
-                            Log.i(TAG, "Starting to get receipts");
-
-                            *//*try {
-                                numRead = dIs.read(buffer);
-                                Log.i(TAG, "Starting to get receipts: " + numRead);
-                            } catch (Exception e) {
-                                Log.i(TAG, "Starting to get receipts failed: " + e);
-                                e.printStackTrace();
-                            }*//*
-
-                            byte[] tmp = new byte[536870912];
-                            Boolean flag2 = false;
-                            dIs.readFully(tmp);
-                            Log.i(TAG, "tmp size: " + tmp);
-                            Log.i(TAG, "readData info: " + readData);
-                            while ((numRead = readData) != -1) {
-                                bufferOS.write(buffer, 0, numRead);
-                                totalRead += numRead;
-                                bufferOS.flush();
-                                //printLog("Bytes received: " + numRead + ", Total bytes: " + totalRead);
-                                Log.i(TAG, "Bytes received: " + numRead + ", Total bytes: " + totalRead);
-                                //handler.post(() -> {
-                                //printLog("Current Received Bytes Length: " + numRead + "\n");
-                                //});
-
-                                    byte[] resultArray = bufferOS.toByteArray();
-                                    Bitmap resultBitmp = BitmapFactory.decodeByteArray(resultArray, 0, resultArray.length);
-                                    Log.i(TAG, "resultBitmap info: " + resultBitmp.getByteCount());
-                                    frames[currentFrameIndex++] = (resultBitmp);
-                                    Log.i(TAG, "currentFrameIndex info: " + currentFrameIndex);
-
-                                //if (currentFrameIndex < frames.length) {
-                                drawFrame();
-                                //drawFrame();
-                                //}
-                            }
-
-
-                            //printLog("End of the receipts");
-                            Log.i(TAG, "End of the receipts");
-                        } catch (Exception e) {
-                            //printLog("Connection failed: " + e);
-                            Log.e(TAG, "Connection failed: " + e);
-                            e.printStackTrace();
-                        }
-                    }*/
-
-
-                    //handler.post(() -> playBtn.setEnabled((canPlayVideo = true)));
-                }
-                // clientSocket.close();
-
+                iS = clientSocket.getInputStream();
+                dIs = new ObjectInputStream(iS);
+                printLog("New InputStream created.");
             } catch (Exception e) {
                 //printLog("Connection failed: " + e);
                 Log.e(TAG, "Connection failed: " + e);
@@ -295,7 +204,10 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                 canvas.drawColor(Color.BLACK);
 
                 // Draw the current frame
-                canvas.drawBitmap(frames[i], 0, 0, null);
+                if(frames[i] != null)
+                    canvas.drawBitmap(frames[i], 0, 0, null);
+                else
+                    Log.i(TAG, "Current frame is null.");
                 Log.i(TAG, "cur inx: " + i);
 
                 // Increment frame index for the next frame
