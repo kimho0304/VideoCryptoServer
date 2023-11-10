@@ -47,7 +47,6 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
     private boolean canPlayVideo = false;
     private InputStream iS;
     private ObjectInputStream dIs = null;
-    private DataInputStream dIsFlag = null;
     private Handler handler;
     private int currentFrameIndex = 0;
     private ServerSocket serverSocket;
@@ -111,15 +110,17 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                 try {
                     //  java.io.StreamCorruptedException: invalid type code: AC --> 스트림을 새로 생성하여 해결
                     //BitmapDataObject bitmapObject = new BitmapDataObject(null);
-                    byte[] result = (byte[]) dIs.readObject();
+                    //byte[] result = dIs.read();
                     //int resultLength = (int) dIs.readInt();
-                    //byte[] buffer = new byte[resultLength];
-                    //for(int pos = 0; pos != -1; pos = dIs.read(buffer));
-
-                    Bitmap resultBitmap = BitmapFactory.decodeByteArray(result, 0, result.length);
+                    byte[] buffer = new byte[16384];
+                    int size = 0;
+                    //for(int pos = 0; pos != -1; pos = dIs.read(buffer), size += pos);
+                    buffer = (byte[]) dIs.readObject();
+                    //Log.i(TAG, "size: " + size);
                     //printLog("resultBitmap is null?: " + (Boolean)(resultBitmap == null));
 
-                    frames[i] = resultBitmap;
+                    frames[i] = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
+                    i = (i + 1) % currentFrameIndex;
                     currentFrameIndex++;
                     //if(frames[i] != null)
                         //printLog("frames[i]: info" + frames[i].getByteCount() + ", cnt: " + i);
@@ -143,7 +144,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
     }
 
     // https://github.com/rantibi/MyFirstApp/blob/master/src/com/sharedpaint/serializables/SerializableBitmap.java
-    public class BitmapDataObject implements Serializable {
+    /*public class BitmapDataObject implements Serializable {
 
         private Bitmap currentImage;
 
@@ -157,7 +158,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
             byte[] byteArray = stream.toByteArray();
             return byteArray;
         }
-    }
+    }*/
 
     private Thread startServer() {
         return new Thread(() -> {
@@ -204,14 +205,18 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                 canvas.drawColor(Color.BLACK);
 
                 // Draw the current frame
-                if(frames[i] != null)
-                    canvas.drawBitmap(frames[i], 0, 0, null);
+                if(frames[i] != null) {
+                    Canvas finalCanvas = canvas;
+                    runOnUiThread(()->{
+                        finalCanvas.drawBitmap(frames[i], 0, 0, null);
+                    });
+                }
                 else
                     Log.i(TAG, "Current frame is null.");
                 Log.i(TAG, "cur inx: " + i);
 
                 // Increment frame index for the next frame
-                i = (i + 1) % currentFrameIndex;
+
             }
         } finally {
             if (canvas != null) {
