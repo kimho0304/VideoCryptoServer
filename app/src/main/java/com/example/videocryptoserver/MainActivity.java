@@ -19,9 +19,11 @@ import android.widget.Button;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -31,12 +33,17 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class MainActivity extends AppCompatActivity implements SurfaceHolder.Callback {
     private static final String TAG = "MainActivity_Debug";
     private static final int FRAME_DELAY = 0;
+    private static final boolean VERBOSE = false;
+    private static int bufferSize = 2;
+    private static final int bufferSpeed = 35;
+    private int bufferCurInx = 0;
     int port = 9090;
-    int i = 0;
     private Button server_btn, receive_btn, playBtn;
     private SurfaceView videoView;
     private SurfaceHolder surfaceHolder;
@@ -51,7 +58,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
     private int currentFrameIndex = 0;
     private ServerSocket serverSocket;
     private Socket clientSocket = null;
-    private File resultFile;
+    private ArrayList<byte[]> bufferBitmap = new ArrayList<>();
 
     private void printLog(String s) {
         handler.post(() -> { // 메인 Handler를 통해 메인 스레드에 "Server is offline." 내용의 Toast Message를 띄움.
@@ -104,28 +111,39 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
     }
 
     private class receiveData extends AsyncTask<Void, Void, Void> {
+        Bitmap bmp = null;
+        int i = 0;
+
         @Override
         protected Void doInBackground(Void... voids) {
-            while (clientSocket.isConnected() == true) {
+            while (clientSocket.isConnected()) {
                 try {
-                    //  java.io.StreamCorruptedException: invalid type code: AC --> 스트림을 새로 생성하여 해결
-                    //BitmapDataObject bitmapObject = new BitmapDataObject(null);
-                    //byte[] result = dIs.read();
-                    //int resultLength = (int) dIs.readInt();
-                    byte[] buffer = new byte[16384];
-                    int size = 0;
-                    //for(int pos = 0; pos != -1; pos = dIs.read(buffer), size += pos);
-                    buffer = (byte[]) dIs.readObject();
-                    //Log.i(TAG, "size: " + size);
-                    //printLog("resultBitmap is null?: " + (Boolean)(resultBitmap == null));
+                    // Log.d(TAG, "looping: " + i++);
+                    byte[] buffer = (byte[]) dIs.readObject();
 
-                    frames[i] = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
-                    i = (i + 1) % currentFrameIndex;
-                    currentFrameIndex++;
-                    //if(frames[i] != null)
-                        //printLog("frames[i]: info" + frames[i].getByteCount() + ", cnt: " + i);
-                    Log.i(TAG, "getBitmap: " + i);
-                    publishProgress();
+                    // Log.d(TAG, "to String: " + buffer[0] + " " + buffer[1] + " " + buffer[2]);
+
+                    if (buffer[0] == 1 && buffer[1] == 2 && buffer[2] == 3) {
+                        bufferSize = i;
+                        runOnUiThread(() -> new DrawFrame().run());
+                        Log.d(TAG, "Got the end signal.");
+                        break;
+                    } else {
+                        Log.d(TAG, "Got the bitmap: " + i++);
+                        if (i > bufferSize) {
+                            runOnUiThread(() -> new DrawFrame().run());
+                            i %= bufferSize;
+                        }
+
+                        bmp = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
+                        bufferBitmap.add(buffer);
+
+                        surfaceHolder.setFixedSize((int) (bmp.getWidth() * 0.7), (int) (bmp.getHeight() * 0.7));
+                        // Log.d(TAG, "bufferBitmap len: " + bufferBitmap.size());
+
+                        if (VERBOSE)
+                            saveBitmapToPNG(buffer);
+                    }
                 } catch (IOException e) {
                     e.printStackTrace();
                 } catch (Exception e) {
@@ -136,10 +154,28 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
             return null;
         }
 
+        private void saveBitmapToPNG(byte[] buffer) throws IOException {
+            File tmp = File.createTempFile("pigeon" + i++, ".png");
+            BufferedOutputStream bos = null;
+            Bitmap bmp = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
+            try {
+                bos = new BufferedOutputStream(new FileOutputStream(tmp.getAbsolutePath()));
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, bos);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        @Override
+        protected void onPostExecute(Void unused) {
+            super.onPostExecute(unused);
+            Log.d(TAG, "Looping ended.");
+        }
+
         @Override
         protected void onProgressUpdate(java.lang.Void... values) {
             super.onProgressUpdate(values);
-            drawFrame();
+            //drawFrame(bmp);
         }
     }
 
@@ -180,8 +216,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                 int clientPort = clientSocket.getPort();
                 printLog("The client is connected: " + clientHost + ":" + clientPort);
 
-                iS = clientSocket.getInputStream();
-                dIs = new ObjectInputStream(iS);
+                dIs = new ObjectInputStream(clientSocket.getInputStream());
                 printLog("New InputStream created.");
             } catch (Exception e) {
                 //printLog("Connection failed: " + e);
@@ -195,7 +230,44 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
         super.onResume();
     }
 
-    private void drawFrame() {
+    private class DrawFrame extends Thread{
+        private ReentrantLock locker = new ReentrantLock();
+        @Override
+        public void run() {
+            Log.i(TAG, "drawFrame() running");
+            Canvas canvas = null;
+            int inx = 0;
+            for (; inx < bufferSize; inx++) {
+                try {
+                    // Draw the current frame
+                    canvas = surfaceHolder.lockCanvas();
+                    if (canvas != null) {
+                        Log.i("helloworld", inx + ": " + (inx + bufferCurInx));
+                        // Clear the canvas
+                        canvas.drawColor(Color.BLACK);
+                        canvas.drawBitmap(BitmapFactory.decodeByteArray(bufferBitmap.get(inx + bufferCurInx), 0, bufferBitmap.get(inx + bufferCurInx).length), 0, 0, null);
+                        synchronized (this) {
+                            this.wait(bufferSpeed);
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Log.e(TAG, "InterruptedException: " + e);
+                    e.printStackTrace();
+                } finally {
+                    if (canvas != null) {
+                        surfaceHolder.unlockCanvasAndPost(canvas);
+                    }
+                }
+            }
+            if (inx >= bufferSize - 1)
+                bufferCurInx += bufferSize;
+            else
+                Log.w(TAG, "iterating err.");
+        }
+    }
+
+
+    private void drawFrame(Bitmap bmp) {
         Log.i(TAG, "drawFrame() running");
         Canvas canvas = null;
         try {
@@ -205,15 +277,15 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                 canvas.drawColor(Color.BLACK);
 
                 // Draw the current frame
-                if(frames[i] != null) {
+                if (bmp != null) {
                     Canvas finalCanvas = canvas;
-                    runOnUiThread(()->{
-                        finalCanvas.drawBitmap(frames[i], 0, 0, null);
+                    runOnUiThread(() -> {
+                        finalCanvas.drawBitmap(bmp, 0, 0, null);
+                        bmp.recycle();
                     });
-                }
-                else
+                } else
                     Log.i(TAG, "Current frame is null.");
-                Log.i(TAG, "cur inx: " + i);
+                //Log.i(TAG, "cur inx: " + i);
 
                 // Increment frame index for the next frame
 
@@ -230,9 +302,8 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
         Runnable animationRunnable = new Runnable() {
             @Override
             public void run() {
-                i = 0;
                 //if (currentFrameIndex < frames.length)
-                drawFrame();
+                //drawFrame();
                 // Control the animation frame rate here using a delay
                 handler.postDelayed(this, FRAME_DELAY);
             }

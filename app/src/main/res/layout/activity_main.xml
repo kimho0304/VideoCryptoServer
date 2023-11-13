@@ -23,7 +23,9 @@
         <SurfaceView
             android:id="@+id/videoView"
             android:layout_width="672px"
-            android:layout_height="1074px" />
+            android:layout_height="1074px"
+            android:layout_marginTop="20dp"
+            android:layout_gravity="center"/>
 
         <Button
             android:id="@+id/playBtn"
