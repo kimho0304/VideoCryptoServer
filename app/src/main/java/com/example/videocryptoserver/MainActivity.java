@@ -7,7 +7,6 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.media.MediaPlayer;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
@@ -19,49 +18,43 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import android.widget.Toast;
-import android.widget.VideoView;
 
-import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
+import java.io.Serializable;
+import java.io.StreamCorruptedException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketException;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class MainActivity extends AppCompatActivity implements SurfaceHolder.Callback {
     private static final String TAG = "MainActivity_Debug";
     private static final int FRAME_DELAY = 0;
+    private static final boolean VERBOSE = false;
+    private static int bufferSize = 2;
+    private static final int bufferSpeed = 35;
+    private int bufferCurInx = 0;
     int port = 9090;
-    int i;
     private Button server_btn, receive_btn, playBtn;
     private SurfaceView videoView;
     private SurfaceHolder surfaceHolder;
     private TextView logText;
     private ScrollView logScrollView;
-    //private ArrayList<Bitmap> frames = new ArrayList<>(); // Array of bitmaps for animation frames
-    private final Bitmap[] frames = new Bitmap[8000];
     private boolean canPlayVideo = false;
-    private DataInputStream dIs = null;
-    private DataInputStream dIsFlag = null;
+    private ObjectInputStream dIs = null;
     private Handler handler;
-    private int currentFrameIndex = 0;
     private ServerSocket serverSocket;
     private Socket clientSocket = null;
-    private DataInputStream dataInputStream;
-    private FileOutputStream fileOutputStream;
-    private File resultFile;
+    private ArrayList<byte[]> bufferBitmap = new ArrayList<>();
 
     private void printLog(String s) {
         handler.post(() -> { // 메인 Handler를 통해 메인 스레드에 "Server is offline." 내용의 Toast Message를 띄움.
@@ -108,43 +101,77 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
 
         receive_btn = findViewById(R.id.receiveBtn);
         receive_btn.setOnClickListener(view -> {
-            new Thread(() -> {
-                while (clientSocket.isConnected() == true) {
-                    byte[] buffer = new byte[8192];
-                    ByteArrayOutputStream bufferOS = new ByteArrayOutputStream();
-                    int numRead;
-                    long totalRead = 0;
-                    boolean flag = false;
-                    try {
-                        while ((numRead = dIs.read()) != -1) {
-                            bufferOS.write(buffer, 0, numRead);
-                            totalRead += numRead;
-                            bufferOS.flush();
-                            //printLog("Bytes received: " + numRead + ", Total bytes: " + totalRead);
-                            Log.i(TAG, "Bytes received: " + numRead + ", Total bytes: " + totalRead);
-                            //handler.post(() -> {
-                            //printLog("Current Received Bytes Length: " + numRead + "\n");
-                            //});
+            receiveData task = new receiveData();
+            task.execute();
+        });
+    }
 
-                            flag = dIsFlag.readBoolean();
-                            if(flag) {
-                                byte[] resultArray = bufferOS.toByteArray();
-                                Bitmap resultBitmp = BitmapFactory.decodeByteArray(resultArray, 0, resultArray.length);
-                                //Log.i(TAG, "resultBitmap info: " + resultBitmp.getByteCount());
-                                frames[currentFrameIndex++] = (resultBitmp);
-                                Log.i(TAG, "currentFrameIndex info: " + currentFrameIndex);
-                                drawFrame();
-                                flag = false;
-                            }
+    private class receiveData extends AsyncTask<Void, Void, Void> {
+        Bitmap bmp = null;
+        int i = 0;
+
+        @Override
+        protected Void doInBackground(Void... voids) {
+            while (clientSocket.isConnected()) {
+                try {
+                    // Log.d(TAG, "looping: " + i++);
+                    byte[] buffer = (byte[]) dIs.readObject();
+
+                    // Log.d(TAG, "to String: " + buffer[0] + " " + buffer[1] + " " + buffer[2]);
+
+                    if (buffer[0] == 1 && buffer[1] == 2 && buffer[2] == 3) {
+                        bufferSize = i;
+                        runOnUiThread(() -> new DrawFrame().run());
+                        Log.d(TAG, "Got the end signal.");
+                        break;
+                    } else {
+                        Log.d(TAG, "Got the bitmap: " + i++);
+                        if (i > bufferSize) {
+                            runOnUiThread(() -> new DrawFrame().run());
+                            i %= bufferSize;
                         }
 
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
+                        bmp = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
+                        bufferBitmap.add(buffer);
+
+                        surfaceHolder.setFixedSize((int) (bmp.getWidth() * 0.7), (int) (bmp.getHeight() * 0.7));
+                        // Log.d(TAG, "bufferBitmap len: " + bufferBitmap.size());
+
+                        if (VERBOSE)
+                            saveBitmapToPNG(buffer);
                     }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
-        }).start();
-    });
-}
+
+            return null;
+        }
+
+        private void saveBitmapToPNG(byte[] buffer) throws IOException {
+            File tmp = File.createTempFile("pigeon" + i++, ".png");
+            BufferedOutputStream bos = null;
+            Bitmap bmp = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
+            try {
+                bos = new BufferedOutputStream(new FileOutputStream(tmp.getAbsolutePath()));
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, bos);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        @Override
+        protected void onPostExecute(Void unused) {
+            super.onPostExecute(unused);
+            Log.d(TAG, "Looping ended.");
+        }
+    }
+
+    private void refreshArray(){
+
+    }
 
     private Thread startServer() {
         return new Thread(() -> {
@@ -153,6 +180,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
 
                 //printLog("Server is on progress: " + serverSocket.getInetAddress() + ":" + serverSocket.getLocalPort());
                 Log.i(TAG, "Server is on progress.");
+                printLog("Server is on progress.");
 
                 while (true) {
                     if (clientSocket != null)
@@ -163,116 +191,10 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
 
                 InetAddress clientHost = clientSocket.getLocalAddress();
                 int clientPort = clientSocket.getPort();
-                dIs = new DataInputStream(clientSocket.getInputStream());
-                dIsFlag = new DataInputStream(clientSocket.getInputStream());
+                printLog("The client is connected: " + clientHost + ":" + clientPort);
 
-                if (clientSocket != null) {
-                    //printLog("Connection Success.");
-                    //printLog("The Client is connected: " + clientHost + ":" + clientPort + ", host: " + clientHost.getHostName());
-
-                    Log.i(TAG, "The client is connected: " + clientHost + ":" + clientPort + ", host: " + clientHost.getHostName());
-
-                    //Boolean flag = false;
-                    //DataInputStream dIs = new DataInputStream(clientSocket.getInputStream());
-//                        while (flag == false) {
-//                            Log.i(TAG, "FLAG ON: " + flag);
-//                            try {
-//                                flag = dIs.readBoolean();
-//                            } catch (IOException e) {
-//                                e.printStackTrace();
-//                                throw new RuntimeException(e);
-//                            } finally {
-//                                Log.i(TAG, "FLAG ON: " + flag);
-//                            }
-//                        }
-
-                    Log.i(TAG, "Skip writeBoolean allocation");
-
-                    // 출력물 파일을 담을 File 형 변수 resultFile 생성.
-                    resultFile = null;
-                        /*try {
-                            resultFile = File.createTempFile("tmp", "mp4");
-                        } catch (IOException e) {
-                            //printLog("Failed to create new tmp file: " + e);
-                            Log.e(TAG, "Failed to create new tmp file: " + e);
-                            e.printStackTrace();
-                        }*/
-
-                        /*BufferedOutputStream bufferOS = null;
-                        try {
-                            bufferOS = new BufferedOutputStream(new FileOutputStream(resultFile));
-                            Log.i(TAG, "bufferOS Info: " + bufferOS);
-                            //printLog("OutputStream Info: " + bufferOS);
-                        } catch (FileNotFoundException e) {
-                            //printLog("FileNotFoundException: " + e);
-                            Log.e(TAG, "FileNotFoundException: " + e);
-                            e.printStackTrace();
-                        }*/
-
-                    ByteArrayOutputStream bufferOS = new ByteArrayOutputStream();
-                    Boolean flag = false;
-
-
-                    /*while (true) {
-                        try {
-                            //flag = dIs.readBoolean();
-                            // byte[] buffer = new byte[16384]; // == 2^14
-                            byte[] buffer = new byte[8192]; // == 2^13
-                            int numRead;
-                            long totalRead = 0;
-                            //printLog("Starting to get receipts");
-                            Log.i(TAG, "Starting to get receipts");
-
-                            *//*try {
-                                numRead = dIs.read(buffer);
-                                Log.i(TAG, "Starting to get receipts: " + numRead);
-                            } catch (Exception e) {
-                                Log.i(TAG, "Starting to get receipts failed: " + e);
-                                e.printStackTrace();
-                            }*//*
-
-                            byte[] tmp = new byte[536870912];
-                            Boolean flag2 = false;
-                            dIs.readFully(tmp);
-                            Log.i(TAG, "tmp size: " + tmp);
-                            Log.i(TAG, "readData info: " + readData);
-                            while ((numRead = readData) != -1) {
-                                bufferOS.write(buffer, 0, numRead);
-                                totalRead += numRead;
-                                bufferOS.flush();
-                                //printLog("Bytes received: " + numRead + ", Total bytes: " + totalRead);
-                                Log.i(TAG, "Bytes received: " + numRead + ", Total bytes: " + totalRead);
-                                //handler.post(() -> {
-                                //printLog("Current Received Bytes Length: " + numRead + "\n");
-                                //});
-
-                                    byte[] resultArray = bufferOS.toByteArray();
-                                    Bitmap resultBitmp = BitmapFactory.decodeByteArray(resultArray, 0, resultArray.length);
-                                    Log.i(TAG, "resultBitmap info: " + resultBitmp.getByteCount());
-                                    frames[currentFrameIndex++] = (resultBitmp);
-                                    Log.i(TAG, "currentFrameIndex info: " + currentFrameIndex);
-
-                                //if (currentFrameIndex < frames.length) {
-                                drawFrame();
-                                //drawFrame();
-                                //}
-                            }
-
-
-                            //printLog("End of the receipts");
-                            Log.i(TAG, "End of the receipts");
-                        } catch (Exception e) {
-                            //printLog("Connection failed: " + e);
-                            Log.e(TAG, "Connection failed: " + e);
-                            e.printStackTrace();
-                        }
-                    }*/
-
-
-                    //handler.post(() -> playBtn.setEnabled((canPlayVideo = true)));
-                }
-                // clientSocket.close();
-
+                dIs = new ObjectInputStream(clientSocket.getInputStream());
+                printLog("New InputStream created.");
             } catch (Exception e) {
                 //printLog("Connection failed: " + e);
                 Log.e(TAG, "Connection failed: " + e);
@@ -285,44 +207,40 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
         super.onResume();
     }
 
-    private void drawFrame() {
-        Log.i(TAG, "drawFrame() running");
-        Canvas canvas = null;
-        try {
-            canvas = surfaceHolder.lockCanvas();
-            if (canvas != null) {
-                // Clear the canvas
-                canvas.drawColor(Color.BLACK);
-
-                // Draw the current frame
-                canvas.drawBitmap(frames[i], 0, 0, null);
-                Log.i(TAG, "cur inx: " + i);
-
-                // Increment frame index for the next frame
-                i = (i + 1) % currentFrameIndex;
+    private class DrawFrame extends Thread{
+        private ReentrantLock locker = new ReentrantLock();
+        @Override
+        public void run() {
+            Log.i(TAG, "drawFrame() running");
+            Canvas canvas = null;
+            int inx = 0;
+            for (; inx < bufferSize; inx++) {
+                try {
+                    // Draw the current frame
+                    canvas = surfaceHolder.lockCanvas();
+                    if (canvas != null) {
+                        Log.i("helloworld", inx + ": " + (inx + bufferCurInx));
+                        // Clear the canvas
+                        canvas.drawColor(Color.BLACK);
+                        canvas.drawBitmap(BitmapFactory.decodeByteArray(bufferBitmap.get(inx + bufferCurInx), 0, bufferBitmap.get(inx + bufferCurInx).length), 0, 0, null);
+                        synchronized (this) {
+                            this.wait(bufferSpeed);
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Log.e(TAG, "InterruptedException: " + e);
+                    e.printStackTrace();
+                } finally {
+                    if (canvas != null) {
+                        surfaceHolder.unlockCanvasAndPost(canvas);
+                    }
+                }
             }
-        } finally {
-            if (canvas != null) {
-                surfaceHolder.unlockCanvasAndPost(canvas);
-            }
+            if (inx >= bufferSize - 1)
+                bufferCurInx += bufferSize;
+            else
+                Log.w(TAG, "iterating err.");
         }
-    }
-
-    private void startAnimation() {
-        // Create a runnable to periodically draw frames
-        Runnable animationRunnable = new Runnable() {
-            @Override
-            public void run() {
-                i = 0;
-                //if (currentFrameIndex < frames.length)
-                drawFrame();
-                // Control the animation frame rate here using a delay
-                handler.postDelayed(this, FRAME_DELAY);
-            }
-        };
-
-        // Start the animation loop
-        handler.post(animationRunnable);
     }
 
     @Override
