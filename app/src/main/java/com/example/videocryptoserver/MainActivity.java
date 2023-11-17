@@ -40,7 +40,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class MainActivity extends AppCompatActivity implements SurfaceHolder.Callback {
     private static final String TAG = "MainActivity_Debug";
     private static final boolean VERBOSE = false;
-    private static int bufferSize = 2;
+    private static int bufferSize = 20;
     private static final int bufferSpeed = 35;
     private static int bufferCurInx = 0;
     int port = 9090;
@@ -154,13 +154,13 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
 
                         bmp = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
                         // bufferBitmap.add(new BufferBitmap(bmp, false));
-                        bufferBitmap.add(bmp);
+                        bufferBitmap.add(i, bmp);
                         if((firstFlag) == 0) {
                             setVideoSize(bmp.getWidth(), bmp.getHeight());
-                            firstFlag++;
+                            firstFlag = -1;
                         }
 
-                        Log.d(TAG + "SizeSet", bmp.getWidth() + ", " + bmp.getHeight());
+                        if(VERBOSE) Log.d(TAG + "SizeSet", bmp.getWidth() + ", " + bmp.getHeight());
 
                         // surfaceHolder.setFixedSize((int)(bmp.getHeight()), (int) (bmp.getWidth()));
                         // Log.d(TAG, "bufferBitmap len: " + bufferBitmap.size());
@@ -251,7 +251,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                         Log.i("helloworld", inx + ": " + (inx + bufferCurInx));
                         // Clear the canvas
                         canvas.drawColor(Color.BLACK);
-                        canvas.drawBitmap(bufferBitmap.get(inx + bufferCurInx), 0, 0, null);
+                        canvas.drawBitmap(bufferBitmap.get(inx), 0, 0, null);
                         synchronized (this) {
                             this.wait(bufferSpeed);
                         }
@@ -265,8 +265,10 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                     }
                 }
             }
-            if (inx >= bufferSize - 1)
-                bufferCurInx += bufferSize;
+            if (inx >= bufferSize - 1) {
+                bufferCurInx %= bufferSize;
+                // bufferBitmap.clear();
+            }
             else
                 Log.w(TAG, "iterating err.");
         }
