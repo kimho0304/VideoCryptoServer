@@ -42,7 +42,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
     private static final boolean VERBOSE = false;
     private static int bufferSize = 2;
     private static final int bufferSpeed = 35;
-    private int bufferCurInx = 0;
+    private static int bufferCurInx = 0;
     int port = 9090;
     private Button server_btn, receive_btn, playBtn;
     private SurfaceView videoView;
@@ -63,16 +63,22 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
         });
     }
 
-    private class BufferBitmap{
-        private byte[] frame;
+    private static class BufferBitmap {
+        private Bitmap frame;
         private boolean flag;
-        BufferBitmap(byte[] frame, boolean flag){
+
+        BufferBitmap(Bitmap frame, boolean flag) {
             this.frame = frame;
             this.flag = flag;
         }
 
-        public void recycle(){
-
+        public void recycle() {
+            // int inx = bufferCurInx;
+            for (int i = 0; i < bufferCurInx; i++) {
+                //if(bufferBitmap.get(i).flag)
+                // bufferBitmap.remove(i);
+            }
+            bufferCurInx = 0;
         }
     }
 
@@ -119,6 +125,8 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
         });
     }
 
+    private int firstFlag = 0;
+
     private class receiveData extends AsyncTask<Void, Void, Void> {
         Bitmap bmp = null;
         int i = 0;
@@ -145,9 +153,16 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                         }
 
                         bmp = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
+                        // bufferBitmap.add(new BufferBitmap(bmp, false));
                         bufferBitmap.add(bmp);
+                        if((firstFlag) == 0) {
+                            setVideoSize(bmp.getWidth(), bmp.getHeight());
+                            firstFlag++;
+                        }
 
-                        surfaceHolder.setFixedSize((int) (bmp.getWidth() * 0.7), (int) (bmp.getHeight() * 0.7));
+                        Log.d(TAG + "SizeSet", bmp.getWidth() + ", " + bmp.getHeight());
+
+                        // surfaceHolder.setFixedSize((int)(bmp.getHeight()), (int) (bmp.getWidth()));
                         // Log.d(TAG, "bufferBitmap len: " + bufferBitmap.size());
 
                         if (VERBOSE)
@@ -182,7 +197,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
         }
     }
 
-    private void refreshArray(){
+    private void refreshArray() {
 
     }
 
@@ -220,8 +235,9 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
         super.onResume();
     }
 
-    private class DrawFrame extends Thread{
+    private class DrawFrame extends Thread {
         private ReentrantLock locker = new ReentrantLock();
+
         @Override
         public void run() {
             Log.i(TAG, "drawFrame() running");
@@ -235,7 +251,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                         Log.i("helloworld", inx + ": " + (inx + bufferCurInx));
                         // Clear the canvas
                         canvas.drawColor(Color.BLACK);
-                        canvas.drawBitmap(BitmapFactory.decodeByteArray(bufferBitmap.get(inx + bufferCurInx), 0, bufferBitmap.get(inx + bufferCurInx).length), 0, 0, null);
+                        canvas.drawBitmap(bufferBitmap.get(inx + bufferCurInx), 0, 0, null);
                         synchronized (this) {
                             this.wait(bufferSpeed);
                         }
@@ -256,6 +272,20 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
         }
     }
 
+    // https://stackoverflow.com/a/20491603/22779130
+    private void setVideoSize(int width, int height) {
+        runOnUiThread(()->{
+            android.view.ViewGroup.LayoutParams lp = videoView.getLayoutParams();
+
+            lp.width = width;
+            lp.height = height;
+
+            // Commit the layout parameters
+            videoView.setLayoutParams(lp);
+            Log.d(TAG + "_SetSize", "SurfaceView size changed: " + videoView.getWidth() + ", " + videoView.getHeight());
+        });
+    }
+
     @Override
     public void surfaceCreated(@NonNull SurfaceHolder holder) {
 
@@ -263,7 +293,6 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
 
     @Override
     public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
-
     }
 
     @Override
