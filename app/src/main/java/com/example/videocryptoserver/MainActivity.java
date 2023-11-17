@@ -12,6 +12,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.util.Pair;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
@@ -38,7 +39,6 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class MainActivity extends AppCompatActivity implements SurfaceHolder.Callback {
     private static final String TAG = "MainActivity_Debug";
-    private static final int FRAME_DELAY = 0;
     private static final boolean VERBOSE = false;
     private static int bufferSize = 2;
     private static final int bufferSpeed = 35;
@@ -54,13 +54,26 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
     private Handler handler;
     private ServerSocket serverSocket;
     private Socket clientSocket = null;
-    private ArrayList<byte[]> bufferBitmap = new ArrayList<>();
+    private ArrayList<Bitmap> bufferBitmap = new ArrayList<>();
 
     private void printLog(String s) {
         handler.post(() -> { // 메인 Handler를 통해 메인 스레드에 "Server is offline." 내용의 Toast Message를 띄움.
             logText.append(s + '\n');
             logScrollView.fullScroll(View.FOCUS_DOWN);
         });
+    }
+
+    private class BufferBitmap{
+        private byte[] frame;
+        private boolean flag;
+        BufferBitmap(byte[] frame, boolean flag){
+            this.frame = frame;
+            this.flag = flag;
+        }
+
+        public void recycle(){
+
+        }
     }
 
     @Override
@@ -132,7 +145,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                         }
 
                         bmp = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
-                        bufferBitmap.add(buffer);
+                        bufferBitmap.add(bmp);
 
                         surfaceHolder.setFixedSize((int) (bmp.getWidth() * 0.7), (int) (bmp.getHeight() * 0.7));
                         // Log.d(TAG, "bufferBitmap len: " + bufferBitmap.size());
