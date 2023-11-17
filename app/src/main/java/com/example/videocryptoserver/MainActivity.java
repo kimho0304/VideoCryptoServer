@@ -49,13 +49,9 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
     private SurfaceHolder surfaceHolder;
     private TextView logText;
     private ScrollView logScrollView;
-    //private ArrayList<Bitmap> frames = new ArrayList<>(); // Array of bitmaps for animation frames
-    private final Bitmap[] frames = new Bitmap[8000];
     private boolean canPlayVideo = false;
-    private InputStream iS;
     private ObjectInputStream dIs = null;
     private Handler handler;
-    private int currentFrameIndex = 0;
     private ServerSocket serverSocket;
     private Socket clientSocket = null;
     private ArrayList<byte[]> bufferBitmap = new ArrayList<>();
@@ -171,30 +167,11 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
             super.onPostExecute(unused);
             Log.d(TAG, "Looping ended.");
         }
-
-        @Override
-        protected void onProgressUpdate(java.lang.Void... values) {
-            super.onProgressUpdate(values);
-            //drawFrame(bmp);
-        }
     }
 
-    // https://github.com/rantibi/MyFirstApp/blob/master/src/com/sharedpaint/serializables/SerializableBitmap.java
-    /*public class BitmapDataObject implements Serializable {
+    private void refreshArray(){
 
-        private Bitmap currentImage;
-
-        public BitmapDataObject(Bitmap bitmap) {
-            currentImage = bitmap;
-        }
-
-        private byte[] compressBitmap() throws IOException {
-            ByteArrayOutputStream stream = new ByteArrayOutputStream();
-            currentImage.compress(Bitmap.CompressFormat.PNG, 100, stream);
-            byte[] byteArray = stream.toByteArray();
-            return byteArray;
-        }
-    }*/
+    }
 
     private Thread startServer() {
         return new Thread(() -> {
@@ -264,53 +241,6 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
             else
                 Log.w(TAG, "iterating err.");
         }
-    }
-
-
-    private void drawFrame(Bitmap bmp) {
-        Log.i(TAG, "drawFrame() running");
-        Canvas canvas = null;
-        try {
-            canvas = surfaceHolder.lockCanvas();
-            if (canvas != null) {
-                // Clear the canvas
-                canvas.drawColor(Color.BLACK);
-
-                // Draw the current frame
-                if (bmp != null) {
-                    Canvas finalCanvas = canvas;
-                    runOnUiThread(() -> {
-                        finalCanvas.drawBitmap(bmp, 0, 0, null);
-                        bmp.recycle();
-                    });
-                } else
-                    Log.i(TAG, "Current frame is null.");
-                //Log.i(TAG, "cur inx: " + i);
-
-                // Increment frame index for the next frame
-
-            }
-        } finally {
-            if (canvas != null) {
-                surfaceHolder.unlockCanvasAndPost(canvas);
-            }
-        }
-    }
-
-    private void startAnimation() {
-        // Create a runnable to periodically draw frames
-        Runnable animationRunnable = new Runnable() {
-            @Override
-            public void run() {
-                //if (currentFrameIndex < frames.length)
-                //drawFrame();
-                // Control the animation frame rate here using a delay
-                handler.postDelayed(this, FRAME_DELAY);
-            }
-        };
-
-        // Start the animation loop
-        handler.post(animationRunnable);
     }
 
     @Override
