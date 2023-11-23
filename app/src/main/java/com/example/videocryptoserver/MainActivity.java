@@ -8,11 +8,13 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.util.Pair;
+import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
@@ -40,8 +42,8 @@ import java.util.concurrent.locks.ReentrantLock;
 public class MainActivity extends AppCompatActivity implements SurfaceHolder.Callback {
     private static final String TAG = "MainActivity_Debug";
     private static final boolean VERBOSE = false;
-    private static int bufferSize = 20;
-    private static final int bufferSpeed = 35;
+    private static int bufferSize = 1;
+    private static int FRAME_RATE = -1;
     private static int bufferCurInx = 0;
     int port = 9090;
     private Button server_btn, receive_btn, playBtn;
@@ -55,31 +57,18 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
     private ServerSocket serverSocket;
     private Socket clientSocket = null;
     private ArrayList<Bitmap> bufferBitmap = new ArrayList<>();
+    private static final int MAX_BUFFER_SIZE = 500;
+    private static final int RESET_POINT_INX = 30;
+    private Bitmap[] bmpArray = new Bitmap[MAX_BUFFER_SIZE];
+    private static int curBmpInx = 0;
+    private static int curDrawInx = 0;
+    private long totalReadCnt = 0;
 
     private void printLog(String s) {
         handler.post(() -> { // 메인 Handler를 통해 메인 스레드에 "Server is offline." 내용의 Toast Message를 띄움.
             logText.append(s + '\n');
             logScrollView.fullScroll(View.FOCUS_DOWN);
         });
-    }
-
-    private static class BufferBitmap {
-        private Bitmap frame;
-        private boolean flag;
-
-        BufferBitmap(Bitmap frame, boolean flag) {
-            this.frame = frame;
-            this.flag = flag;
-        }
-
-        public void recycle() {
-            // int inx = bufferCurInx;
-            for (int i = 0; i < bufferCurInx; i++) {
-                //if(bufferBitmap.get(i).flag)
-                // bufferBitmap.remove(i);
-            }
-            bufferCurInx = 0;
-        }
     }
 
     @Override
@@ -98,34 +87,17 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
 
         playBtn = findViewById(R.id.playBtn);
         playBtn.setEnabled(canPlayVideo);
-        /*playBtn.setOnClickListener(view -> {
-            videoView.setOnPreparedListener(new MediaPlayer.OnPreparedListener() { // 비디오 리스너 등록.
-                @Override
-                public void onPrepared(MediaPlayer mp) {
-                    // 준비 완료되면 비디오 재생.
-                    mp.setLooping(true); // 비디오 무한루프 설정: true.
-                    mp.start(); // 비디오 재생 시작.
-                }
-            });
-
-            videoView.setVideoPath(resultFile.getAbsolutePath());
-            videoView.start();
-        });*/
 
         server_btn = findViewById(R.id.serverBtn);
         server_btn.setOnClickListener(view -> {
             startServer().start();
-            // new ServerTask().execute();
         });
 
         receive_btn = findViewById(R.id.receiveBtn);
-        receive_btn.setOnClickListener(view -> {
-            receiveData task = new receiveData();
-            task.execute();
-        });
+        receive_btn.setEnabled(false);
     }
 
-    private int firstFlag = 0;
+    private int once = 0;
 
     private class receiveData extends AsyncTask<Void, Void, Void> {
         Bitmap bmp = null;
@@ -146,24 +118,25 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                         Log.d(TAG, "Got the end signal.");
                         break;
                     } else {
-                        Log.d(TAG, "Got the bitmap: " + i++);
-                        if (i > bufferSize) {
+                        if (i >= bufferSize) {
                             runOnUiThread(() -> new DrawFrame().run());
                             i %= bufferSize;
                         }
+                        Log.d(TAG, "Got the bitmap: " + curBmpInx + ", current drawing inx: " + curDrawInx);
+                        i++;
+                        // bmp = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
 
-                        bmp = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
-                        // bufferBitmap.add(new BufferBitmap(bmp, false));
-                        bufferBitmap.add(i, bmp);
-                        if((firstFlag) == 0) {
+                        bmpArray[curBmpInx++] = (bmp = BitmapFactory.decodeByteArray(buffer, 0, buffer.length));
+                        if (curBmpInx == MAX_BUFFER_SIZE)
+                            curBmpInx = 0;
+
+                        if (once == 0) {
                             setVideoSize(bmp.getWidth(), bmp.getHeight());
-                            firstFlag = -1;
+                            once = -1;
                         }
 
-                        if(VERBOSE) Log.d(TAG + "SizeSet", bmp.getWidth() + ", " + bmp.getHeight());
-
-                        // surfaceHolder.setFixedSize((int)(bmp.getHeight()), (int) (bmp.getWidth()));
-                        // Log.d(TAG, "bufferBitmap len: " + bufferBitmap.size());
+                        if (VERBOSE)
+                            Log.d(TAG + "SizeSet", bmp.getWidth() + ", " + bmp.getHeight());
 
                         if (VERBOSE)
                             saveBitmapToPNG(buffer);
@@ -179,7 +152,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
         }
 
         private void saveBitmapToPNG(byte[] buffer) throws IOException {
-            File tmp = File.createTempFile("pigeon" + i++, ".png");
+            File tmp = File.createTempFile("frame" + i++ + "/", ".png");
             BufferedOutputStream bos = null;
             Bitmap bmp = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
             try {
@@ -213,7 +186,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                 while (true) {
                     if (clientSocket != null)
                         break;
-                    Log.i(TAG, String.valueOf((Boolean) (clientSocket == null)));
+                    Log.i(TAG, "Is socket null?: " + String.valueOf(clientSocket == null));
                     clientSocket = serverSocket.accept();
                 }
 
@@ -222,7 +195,25 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                 printLog("The client is connected: " + clientHost + ":" + clientPort);
 
                 dIs = new ObjectInputStream(clientSocket.getInputStream());
+
+                try {
+                    Log.d(TAG, "process on readObject().");
+                    // Frame rate == frames / sec.
+                    FRAME_RATE = 1000 / dIs.readInt();
+                } catch (IOException e) {
+                    Log.e(TAG, "Failed to read Integer value: " + e);
+                    e.printStackTrace();
+                }
+                Log.d(TAG + "FRAME_RATE", "FRAME_RATE: " + FRAME_RATE);
+
                 printLog("New InputStream created.");
+                /*if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    Log.d(TAG + "setFrameRate", "setFrameRate() called: " + FRAME_RATE);
+                    surfaceHolder.getSurface().setFrameRate(FRAME_RATE, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
+                }*/
+
+                receiveData task = new receiveData();
+                task.execute();
             } catch (Exception e) {
                 //printLog("Connection failed: " + e);
                 Log.e(TAG, "Connection failed: " + e);
@@ -236,8 +227,6 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
     }
 
     private class DrawFrame extends Thread {
-        private ReentrantLock locker = new ReentrantLock();
-
         @Override
         public void run() {
             Log.i(TAG, "drawFrame() running");
@@ -248,12 +237,14 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                     // Draw the current frame
                     canvas = surfaceHolder.lockCanvas();
                     if (canvas != null) {
-                        Log.i("helloworld", inx + ": " + (inx + bufferCurInx));
+                        Log.i(TAG + "DrawFrame", inx + ": " + (inx + curDrawInx));
                         // Clear the canvas
                         canvas.drawColor(Color.BLACK);
-                        canvas.drawBitmap(bufferBitmap.get(inx), 0, 0, null);
+
                         synchronized (this) {
-                            this.wait(bufferSpeed);
+                            Log.d(TAG + "DrawFrame", "is bmpArray null: " + (bmpArray[inx + curDrawInx] == null));
+                            canvas.drawBitmap(bmpArray[inx + curDrawInx], 0, 0, null);
+                            this.wait(FRAME_RATE);
                         }
                     }
                 } catch (InterruptedException e) {
@@ -266,27 +257,62 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                 }
             }
             if (inx >= bufferSize - 1) {
-                bufferCurInx %= bufferSize;
-                // bufferBitmap.clear();
-            }
-            else
+                curDrawInx++;
+                if (curDrawInx >= MAX_BUFFER_SIZE - 1)
+                    curDrawInx = 0;
+            } else
                 Log.w(TAG, "iterating err.");
         }
     }
 
     // https://stackoverflow.com/a/20491603/22779130
     private void setVideoSize(int width, int height) {
-        runOnUiThread(()->{
-            android.view.ViewGroup.LayoutParams lp = videoView.getLayoutParams();
+        android.view.ViewGroup.LayoutParams lp = videoView.getLayoutParams();
 
-            lp.width = width;
-            lp.height = height;
+        Log.d("setVideoSize", "size info: " + width + ", " + height);
+        lp.width = width;
+        lp.height = height;
 
+        runOnUiThread(() -> {
             // Commit the layout parameters
             videoView.setLayoutParams(lp);
-            Log.d(TAG + "_SetSize", "SurfaceView size changed: " + videoView.getWidth() + ", " + videoView.getHeight());
+            Log.d("setVideoSize", "SurfaceView size changed: " + videoView.getWidth() + ", " + videoView.getHeight());
         });
     }
+
+    /*
+    private void setVideoSize(int width, int height) {
+        float videoProportion = (float) width / (float) height;
+
+        // Get the width of the screen
+        int screenWidth = getWindowManager().getDefaultDisplay().getWidth();
+        int screenHeight = getWindowManager().getDefaultDisplay().getHeight();
+        float screenProportion = (float) screenWidth / (float) screenHeight;
+
+        // Get the SurfaceView layout parameters
+        android.view.ViewGroup.LayoutParams lp = videoView.getLayoutParams();
+        if (videoProportion > screenProportion) {
+            lp.width = screenWidth;
+            lp.height = (int) ((float) screenWidth / videoProportion);
+        } else {
+            lp.width = (int) (videoProportion * (float) screenHeight);
+            lp.height = screenHeight;
+        }
+
+        Log.d("setVideoSize", "size info: " + width + ", " + height);
+        //lp.width = width;
+        //lp.height = height;
+
+        // Commit the layout parameters
+        runOnUiThread(() -> {
+            // Commit the layout parameters
+            videoView.setLayoutParams(lp);
+            surfaceHolder.setFixedSize(videoView.getHeight(), videoView.getWidth());
+            Log.d("setVideoSize", "SurfaceView size changed: " + videoView.getWidth() + ", " + videoView.getHeight());
+            Log.d("setVideoSize", "setFixedSize called: " + lp.width + ", " + lp.height);
+        });
+    }
+    */
 
     @Override
     public void surfaceCreated(@NonNull SurfaceHolder holder) {
