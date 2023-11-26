@@ -36,6 +36,8 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
@@ -60,7 +62,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
     private int once = 0;
 
     // Queue definition
-    ArrayBlockingQueue<Bitmap> frameQueue;
+    Queue<Bitmap> frameQueue;
 
     private void printLog(String s) {
         handler.post(() -> { // 메인 Handler를 통해 메인 스레드에 "Server is offline." 내용의 Toast Message를 띄움.
@@ -74,7 +76,7 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         handler = new Handler(Looper.getMainLooper());
-        frameQueue = new ArrayBlockingQueue<>(1024, true);
+        frameQueue = new LinkedList<>();
 
         logScrollView = findViewById(R.id.logScrollView);
 
@@ -120,9 +122,9 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                         }
                         i++;
                         bmp = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
-                        frameQueue.put(bmp);
+                        frameQueue.offer(bmp);
                         //frameQueue.offer(bmp, 10, TimeUnit.MICROSECONDS);
-                        //Log.d("frameQueue", "Current frameQueue size: " + frameQueue.size());
+                        Log.d("frameQueue", "Current frameQueue size: " + frameQueue.size());
                         if (once == 0) {
                             setVideoSize(bmp.getWidth(), bmp.getHeight());
                             once = -1;
@@ -179,11 +181,11 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                         canvas.drawColor(Color.BLACK);
 
                         //canvas.drawBitmap(frameQueue.poll(1, TimeUnit.MILLISECONDS), 0, 0, null);
-                        Bitmap tmp = frameQueue.take();
+                        Bitmap tmp = frameQueue.poll();
                         if(tmp != null) {
                             canvas.drawBitmap(tmp, 0, 0, null);
                             synchronized (this) {
-                               this.wait(FRAME_RATE-3);
+                               this.wait(FRAME_RATE);
                             }
                             tmp.recycle();
                         }
