@@ -120,9 +120,9 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                         }
                         i++;
                         bmp = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
+                        // frameQueue.offer(bmp, 200, TimeUnit.MICROSECONDS);
                         frameQueue.put(bmp);
-                        //frameQueue.offer(bmp, 10, TimeUnit.MICROSECONDS);
-                        //Log.d("frameQueue", "Current frameQueue size: " + frameQueue.size());
+                        Log.d("frameQueue", "Current frameQueue size: " + frameQueue.size());
                         if (once == 0) {
                             setVideoSize(bmp.getWidth(), bmp.getHeight());
                             once = -1;
@@ -178,12 +178,12 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                         // Clear the canvas
                         canvas.drawColor(Color.BLACK);
 
-                        //canvas.drawBitmap(frameQueue.poll(1, TimeUnit.MILLISECONDS), 0, 0, null);
+                        // Bitmap tmp = frameQueue.poll(200, TimeUnit.MICROSECONDS);
                         Bitmap tmp = frameQueue.take();
                         if(tmp != null) {
                             canvas.drawBitmap(tmp, 0, 0, null);
                             synchronized (this) {
-                               this.wait(FRAME_RATE-3);
+                               this.wait(FRAME_RATE);
                             }
                             tmp.recycle();
                         }
