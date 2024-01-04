@@ -84,16 +84,10 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
 
         logText = findViewById(R.id.logText);
 
-        playBtn = findViewById(R.id.playBtn);
-        playBtn.setEnabled(canPlayVideo);
-
         server_btn = findViewById(R.id.serverBtn);
         server_btn.setOnClickListener(view -> {
             startServer().start();
         });
-
-        receive_btn = findViewById(R.id.receiveBtn);
-        receive_btn.setEnabled(false);
     }
 
     private class receiveData extends AsyncTask<Void, Void, Void> {
@@ -104,7 +98,6 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
         protected Void doInBackground(Void... voids) {
             while (clientSocket.isConnected()) {
                 try {
-                    // Log.d(TAG, "looping: " + i++);
                     byte[] buffer = (byte[]) dIs.readObject();
                     // Log.d(TAG, "to String: " + buffer[0] + " " + buffer[1] + " " + buffer[2]);
 
@@ -120,7 +113,6 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                         }
                         i++;
                         bmp = BitmapFactory.decodeByteArray(buffer, 0, buffer.length);
-                        // frameQueue.offer(bmp, 200, TimeUnit.MICROSECONDS);
                         frameQueue.put(bmp);
                         Log.d("frameQueue", "Current frameQueue size: " + frameQueue.size());
                         if (once == 0) {
@@ -128,7 +120,6 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                             once = -1;
                         }
 
-                        //bmp.recycle();
                         if (VERBOSE)
                             Log.d(TAG + "SizeSet", bmp.getWidth() + ", " + bmp.getHeight());
 
@@ -178,7 +169,6 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
                         // Clear the canvas
                         canvas.drawColor(Color.BLACK);
 
-                        // Bitmap tmp = frameQueue.poll(200, TimeUnit.MICROSECONDS);
                         Bitmap tmp = frameQueue.take();
                         if(tmp != null) {
                             canvas.drawBitmap(tmp, 0, 0, null);
@@ -296,7 +286,6 @@ public class MainActivity extends AppCompatActivity implements SurfaceHolder.Cal
             Log.d("setVideoSize", "setFixedSize called: " + lp.width + ", " + lp.height);
         });
     }
-
 
     @Override
     public void surfaceCreated(@NonNull SurfaceHolder holder) {
