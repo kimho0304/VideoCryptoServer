@@ -4,6 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:keepScreenOn="true"
     tools:context=".MainActivity">
 
     <LinearLayout
@@ -24,44 +25,21 @@
             android:id="@+id/videoView"
             android:layout_width="672px"
             android:layout_height="1074px"
-            android:layout_marginTop="20dp"
-            android:layout_gravity="center"/>
+            android:layout_gravity="center"
+            android:layout_marginTop="20dp" />
 
         <Button
-            android:id="@+id/playBtn"
+            android:id="@+id/serverBtn"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center"
             android:layout_marginVertical="20dp"
-            android:text="Play the video" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/serverBtn"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginRight="20dp"
-                android:text="Start the server" />
-
-            <Button
-                android:id="@+id/receiveBtn"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="20dp"
-                android:text="Recieve" />
-
-        </LinearLayout>
+            android:layout_gravity="center"
+            android:text="Start the server" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginLeft="10dp"
-            android:layout_marginTop="10dp"
             android:text="[ Log ]"
             android:textSize="20dp" />
 
